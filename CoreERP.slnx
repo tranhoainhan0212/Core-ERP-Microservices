@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ApiGateway/ApiGateway.csproj" />
+    <Project Path="src/Order.API/Order.API.csproj" />
+    <Project Path="src/Product.API/Product.API.csproj" />
+  </Folder>
+  <Folder Name="/src/Identity.API/">
+    <Project Path="src/Identity.API/Identity.API/Identity.API.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CoreERP.UnitTests/CoreERP.UnitTests.csproj" />
+  </Folder>
+</Solution>

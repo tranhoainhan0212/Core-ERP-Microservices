@@ -1,0 +1,168 @@
+version: '3.8'
+
+services:
+  # ════════════════════════════════════════════
+  # 🗄️ SQL Server — Shared instance, 2 databases
+  # ════════════════════════════════════════════
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: erp-sqlserver
+    environment:
+      SA_PASSWORD: "YourStr0ng!Passw0rd"
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    networks:
+      - erp-network
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStr0ng!Passw0rd" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ════════════════════════════════════════════
+  # 📦 Product.API — Port 5001
+  # ════════════════════════════════════════════
+  product-api:
+    build:
+      context: ./src/Product.API
+      dockerfile: Dockerfile
+    container_name: erp-product-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=ProductDb;User Id=sa;Password=YourStr0ng!Passw0rd;TrustServerCertificate=True
+      - Jwt__Secret=CORE_ERP_SUPER_SECRET_KEY_CHANGE_IN_PROD_2026
+      - Jwt__Issuer=CoreERP.Identity
+      - Jwt__Audience=CoreERP.Client
+      - Security__InternalApiKey=INTERNAL_PRODUCT_ORDER_KEY
+      - Cloudinary__CloudName=dgxnpjlfo
+      - Cloudinary__ApiKey=797824345335693
+      - Cloudinary__ApiSecret=XcnfO6yG6-DEfNf1nhYZXddAARE
+    ports:
+      - "5001:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - erp-network
+    restart: on-failure
+
+  # ════════════════════════════════════════════
+  # 🛒 Order.API — Port 5002 (Tuần 2)
+  # ════════════════════════════════════════════
+  order-api:
+    build:
+      context: ./src/Order.API
+      dockerfile: Dockerfile
+    container_name: erp-order-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=OrderDb;User Id=sa;Password=YourStr0ng!Passw0rd;TrustServerCertificate=True
+      - ServiceUrls__ProductAPI=http://product-api:8080
+      - Jwt__Secret=CORE_ERP_SUPER_SECRET_KEY_CHANGE_IN_PROD_2026
+      - Jwt__Issuer=CoreERP.Identity
+      - Jwt__Audience=CoreERP.Client
+      - Security__InternalApiKey=INTERNAL_PRODUCT_ORDER_KEY
+    ports:
+      - "5002:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      product-api:
+        condition: service_started
+    networks:
+      - erp-network
+    restart: on-failure
+
+  identity-api:
+    build:
+      context: ./src/Identity.API/Identity.API
+      dockerfile: Dockerfile
+    container_name: erp-identity-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=IdentityDb;User Id=sa;Password=YourStr0ng!Passw0rd;TrustServerCertificate=True
+      - Jwt__Secret=CORE_ERP_SUPER_SECRET_KEY_CHANGE_IN_PROD_2026
+      - Jwt__Issuer=CoreERP.Identity
+      - Jwt__Audience=CoreERP.Client
+      - OAuth2__Google__ClientId=342266269835-p9h3oafqf4inqnoguanaojgtrjvk991v.apps.googleusercontent.com
+      - OAuth2__Google__ClientSecret=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
+      - OAuth2__Google__RedirectUri=http://localhost:3000/oauth2/google/callback
+    ports:
+      - "5003:8080"
+    networks:
+      - erp-network
+    restart: on-failure
+
+  # ════════════════════════════════════════════
+  # 🤖 Chatbot API (OpenAI Function Calling)
+  # ════════════════════════════════════════════
+  chatbot-api:
+    build:
+      context: ./src/Chatbot.API
+      dockerfile: Dockerfile
+    container_name: erp-chatbot-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - OpenAI__ApiKey=${OPENAI_API_KEY}
+      - OpenAI__Model=llama-3.3-70b-versatile
+      - OpenAI__Endpoint=https://api.groq.com/openai/v1/
+    ports:
+      - "5004:8080"
+    networks:
+      - erp-network
+    restart: on-failure
+
+  # ════════════════════════════════════════════
+  # 🚪 API Gateway (YARP) — Port 5000 (Tuần 3)
+  # ════════════════════════════════════════════
+  api-gateway:
+    build:
+      context: ./src/ApiGateway
+      dockerfile: Dockerfile
+    container_name: erp-api-gateway
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+    ports:
+      - "5000:8080"
+    depends_on:
+      - product-api
+      - order-api
+      - identity-api
+      - chatbot-api
+    networks:
+      - erp-network
+    restart: always
+
+  # ════════════════════════════════════════════
+  # 💻 Web UI (React + Vite) — Port 3000 (Tuần 4/Phase 2)
+  # ════════════════════════════════════════════
+  web-ui:
+    build:
+      context: ./src/WebUI
+      dockerfile: Dockerfile
+    container_name: erp-web-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - erp-network
+    restart: always
+
+volumes:
+  sqlserver-data:
+    driver: local
+
+networks:
+  erp-network:
+    driver: bridge

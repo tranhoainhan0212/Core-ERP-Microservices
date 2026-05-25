@@ -1,0 +1,9 @@
+**/.git
+**/.vs
+**/.vscode
+**/.env
+**/bin/
+**/obj/
+**/out/
+docker-compose*
+node_modules/
